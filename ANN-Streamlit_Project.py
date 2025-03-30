@@ -1,87 +1,110 @@
 import streamlit as st
 import pandas as pd
 import numpy as np
-import torch
-import torch.nn as nn
-import torch.optim as optim
-from sklearn.preprocessing import StandardScaler, LabelEncoder
+import matplotlib.pyplot as plt
+import tensorflow as tf
+from tensorflow.keras.models import Sequential
+from tensorflow.keras.layers import Dense, Dropout, InputLayer
+from tensorflow.keras.optimizers import Adam, SGD, RMSprop
 from sklearn.model_selection import train_test_split
-
-# Define ANN model
-class ANN(nn.Module):
-    def __init__(self, input_size, hidden_layers, hidden_units):
-        super(ANN, self).__init__()
-        layers = []
-        layers.append(nn.Linear(input_size, hidden_units))
-        layers.append(nn.ReLU())
-        for _ in range(hidden_layers - 1):
-            layers.append(nn.Linear(hidden_units, hidden_units))
-            layers.append(nn.ReLU())
-        layers.append(nn.Linear(hidden_units, 1))
-        layers.append(nn.Sigmoid())
-        self.network = nn.Sequential(*layers)
-    
-    def forward(self, x):
-        return self.network(x)
+from sklearn.preprocessing import StandardScaler, LabelEncoder
 
 # Streamlit UI
-def main():
-    st.title("ANN-Based Prediction Dashboard")
+st.title('📊 ANN-Based Prediction Dashboard')
+
+# Upload dataset
+uploaded_file = st.file_uploader("📂 Upload CSV File", type=['csv'])
+
+if uploaded_file is not None:
+    # Load Data
+    df = pd.read_csv(uploaded_file)
+    st.write("### 🔍 Dataset Preview:", df.head())
+
+    # Feature Selection
+    target_column = st.selectbox("🎯 Select Target Column", df.columns)
+    feature_columns = [col for col in df.columns if col != target_column]
     
-    # File Uploader
-    uploaded_file = st.file_uploader("Upload CSV file", type=["csv"])
-    if uploaded_file is not None:
-        df = pd.read_csv(uploaded_file)
-        st.write("Dataset Preview:")
-        st.dataframe(df.head())
-        
-        # Feature Selection
-        target_column = st.selectbox("Select Target Column", df.columns)
-        feature_columns = [col for col in df.columns if col != target_column]
-        
-        # Data Preprocessing
-        X = df[feature_columns]
-        y = df[target_column]
-        
-        # Encoding categorical variables
-        for col in X.select_dtypes(include=['object']).columns:
-            X[col] = LabelEncoder().fit_transform(X[col])
-        
-        # Scaling numerical features
-        scaler = StandardScaler()
-        X = scaler.fit_transform(X)
-        y = LabelEncoder().fit_transform(y)  # Ensure binary output (0 or 1)
-        
-        # Splitting dataset
-        X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
-        X_train, X_test = torch.tensor(X_train, dtype=torch.float32), torch.tensor(X_test, dtype=torch.float32)
-        y_train, y_test = torch.tensor(y_train, dtype=torch.float32).view(-1, 1), torch.tensor(y_test, dtype=torch.float32).view(-1, 1)
-        
-        # Hyperparameter Tuning
-        hidden_layers = st.slider("Hidden Layers", 1, 5, 2)
-        hidden_units = st.slider("Neurons per Layer", 5, 100, 10)
-        learning_rate = st.slider("Learning Rate", 0.001, 0.1, 0.01, step=0.001)
-        epochs = st.slider("Epochs", 10, 200, 50)
-        
-        # Model Training
-        model = ANN(X_train.shape[1], hidden_layers, hidden_units)
-        criterion = nn.BCELoss()
-        optimizer = optim.Adam(model.parameters(), lr=learning_rate)
-        
-        # Train model
-        for epoch in range(epochs):
-            optimizer.zero_grad()
-            outputs = model(X_train)
-            loss = criterion(outputs, y_train)
-            loss.backward()
-            optimizer.step()
-        
-        # Evaluate model
-        with torch.no_grad():
-            predictions = model(X_test)
-            accuracy = ((predictions.round() == y_test).float().mean()).item()
-        
-        st.write(f"Model Accuracy: {accuracy * 100:.2f}%")
-        
-if __name__ == "__main__":
-    main()
+    # Data Preprocessing
+    X = df[feature_columns]
+    y = df[target_column]
+
+    # Encoding categorical variables
+    for col in X.select_dtypes(include=['object']).columns:
+        X[col] = LabelEncoder().fit_transform(X[col])
+    
+    if y.dtype == 'object':
+        y = LabelEncoder().fit_transform(y)
+    
+    # Scaling numerical features
+    scaler = StandardScaler()
+    X = scaler.fit_transform(X)
+    
+    # Splitting dataset
+    X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=2224)
+    
+    # Sidebar for Hyperparameter Selection
+    st.sidebar.header("⚙️ Model Hyperparameters")
+    
+    num_layers = st.sidebar.slider("Number of Hidden Layers", 1, 5, 2)
+    neurons_per_layer = []
+    activation_functions = []
+    
+    for i in range(num_layers):
+        neurons = st.sidebar.slider(f"Neurons in Layer {i+1}", 5, 100, 10)
+        activation = st.sidebar.selectbox(f"Activation for Layer {i+1}", ['relu', 'tanh', 'sigmoid'], index=0)
+        neurons_per_layer.append(neurons)
+        activation_functions.append(activation)
+    
+    optimizer = st.sidebar.selectbox("Optimizer", ['adam', 'sgd', 'rmsprop'])
+    loss_function = st.sidebar.selectbox("Loss Function", ['binary_crossentropy', 'mean_squared_error', 'hinge'])
+    dropout_rate = st.sidebar.slider("Dropout Rate", 0.0, 0.5, 0.2)
+    epochs = st.sidebar.slider("Number of Epochs", 10, 200, 50)
+
+    # Model Training Button
+    if st.button("🚀 Train Model"):
+        # Build ANN Model
+        model = Sequential()
+        model.add(InputLayer(input_shape=(X_train.shape[1],)))
+
+        for i in range(num_layers):
+            model.add(Dense(units=neurons_per_layer[i], activation=activation_functions[i]))
+            model.add(Dropout(dropout_rate))  # Dropout to prevent overfitting
+
+        # Output layer
+        model.add(Dense(units=1, activation='sigmoid'))
+
+        # Compile Model
+        model.compile(loss=loss_function, optimizer=optimizer, metrics=['accuracy'])
+
+        st.write(f"🔧 Using Optimizer: {optimizer}")
+        st.write(f"🔧 Neurons per layer: {neurons_per_layer}")
+        st.write(f"🔧 Dropout Rate: {dropout_rate}")
+        st.write(f"🔧 Epochs: {epochs}")
+
+        # Train Model
+        with st.spinner('Training ANN Model... Please wait!'):
+            history = model.fit(X_train, y_train, validation_data=(X_test, y_test), epochs=epochs, verbose=1)
+
+        st.success("🎉 Model Training Completed!")
+
+        # Plot Loss
+        fig, ax = plt.subplots()
+        ax.plot(history.history['loss'], label='Training Loss')
+        ax.plot(history.history['val_loss'], label='Validation Loss')
+        ax.set_xlabel("Epochs")
+        ax.set_ylabel("Loss")
+        ax.legend()
+        st.pyplot(fig)
+
+        # Plot Accuracy
+        fig, ax = plt.subplots()
+        ax.plot(history.history['accuracy'], label='Training Accuracy')
+        ax.plot(history.history['val_accuracy'], label='Validation Accuracy')
+        ax.set_xlabel("Epochs")
+        ax.set_ylabel("Accuracy")
+        ax.legend()
+        st.pyplot(fig)
+
+        # Final Evaluation
+        loss, acc = model.evaluate(X_test, y_test)
+        st.write(f"### 📈 Final Validation Accuracy: {acc:.4f}")
