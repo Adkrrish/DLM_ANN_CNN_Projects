@@ -107,4 +107,4 @@ if uploaded_file is not None:
 
         # Final Evaluation
         loss, acc = model.evaluate(X_test, y_test)
-        st.write(f"### 📈 Final Validation Accuracy: {acc:.4f}")
+        st.write(f"### 📈 Final Validation Accuracy: {acc * 100:.2f}%")
